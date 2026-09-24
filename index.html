@@ -193,6 +193,37 @@ h1.brand span{ color:var(--accent); }
   cursor:pointer;
   white-space:nowrap;
 }
+#shareBtn{
+  border-color:var(--accent);
+  color:var(--accent);
+}
+
+.guest-banner{
+  max-width:840px;
+  margin:12px auto 0;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-left:3px solid var(--gold);
+  border-radius:8px;
+  padding:10px 12px;
+  font-size:12.5px;
+  color:var(--ink);
+  line-height:1.5;
+}
+.guest-banner strong{ color:var(--gold); }
+
+.wishlist-toggle{
+  max-width:840px;
+  margin:10px auto 0;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-family:"JetBrains Mono",monospace;
+  font-size:11px;
+  color:var(--muted);
+  cursor:pointer;
+}
+.wishlist-toggle input{ width:15px; height:15px; accent-color:var(--accent); cursor:pointer; }
 
 .stats{
   max-width:840px;
@@ -463,9 +494,14 @@ footer{
   <div class="auth-card">
     <h1>Librogame <span>EL</span></h1>
     <p class="tag">La collezione Edizioni EL, 1985&ndash;2026</p>
-    <p class="lead">Accedi con la tua email per salvare la tua collezione personale. Niente password: ti mandiamo un link di accesso.</p>
+    <p class="lead" id="authLead">Accedi con la tua email per salvare la tua collezione personale. Niente password: ti mandiamo un codice di accesso.</p>
     <input type="email" id="authEmail" placeholder="tuaemail@esempio.it" autocomplete="email" inputmode="email">
-    <button id="authSubmit">Invia link di accesso</button>
+    <button id="authSubmit">Invia codice di accesso</button>
+    <div id="otpSection" hidden>
+      <input type="text" id="authCode" placeholder="Codice a 6 cifre" autocomplete="one-time-code" inputmode="numeric" maxlength="6" style="text-align:center; letter-spacing:.3em; font-family:'JetBrains Mono',monospace; font-size:18px;">
+      <button id="authConfirm">Conferma codice</button>
+      <button id="authResend" style="background:transparent; color:var(--muted); border:none; margin-top:4px;">Rimandami il codice</button>
+    </div>
     <div class="auth-status" id="authStatus"></div>
   </div>
 </div>
@@ -477,10 +513,17 @@ footer{
         <h1 class="brand">Librogame <span>EL</span></h1>
         <p class="subtitle">La collezione Edizioni EL, 1985&ndash;2026</p>
       </div>
-      <div class="account">
+      <div class="account" id="accountBox">
         <span class="email mono" id="accountEmail"></span>
+        <button id="shareBtn">Condividi come wishlist</button>
         <button id="logoutBtn">Esci</button>
       </div>
+      <div class="account" id="guestBox" hidden>
+        <span class="email mono" id="guestLabel">Wishlist condivisa</span>
+      </div>
+    </div>
+    <div class="guest-banner" id="guestBanner" hidden>
+      Stai vedendo, in sola lettura, la collezione di <strong id="guestName">un amico</strong> &mdash; usala come lista dei libri mancanti da regalare.
     </div>
     <div class="stats">
       <div class="stat">
@@ -502,6 +545,10 @@ footer{
       <input type="search" id="search" placeholder="Cerca serie o titolo&hellip;" autocomplete="off">
       <button id="toggleAll">Espandi</button>
     </div>
+    <label class="wishlist-toggle" id="wishlistToggleWrap" hidden>
+      <input type="checkbox" id="wishlistToggle" checked>
+      <span>Mostra solo i libri mancanti (wishlist)</span>
+    </label>
   </header>
 
   <main id="main"></main>
@@ -525,6 +572,9 @@ const state = { owned: new Set(), open: new Set() };
 let currentUser = null;
 let persistTimer = null;
 let saving = false;
+let isGuest = false;
+let guestShareToken = null;
+let wishlistMode = true;
 
 function bookKey(seriesN, idx){ return seriesN + ':' + idx; }
 
@@ -564,6 +614,9 @@ function render(){
     ownedBooks += ownedInSeries;
     const isComplete = ownedInSeries === s.books.length;
     if(isComplete) completeSeries++;
+
+    const wishlistActive = isGuest && wishlistMode;
+    if(wishlistActive && isComplete) return;
 
     const nameMatch = !q || s.name.toLowerCase().includes(q);
     const bookMatches = s.books.map(b => b.toLowerCase().includes(q));
@@ -608,13 +661,14 @@ function render(){
       if(q && !bookMatches[i] && !nameMatch) return;
       const key = bookKey(s.n, i);
       const owned = state.owned.has(key);
+      if(wishlistActive && owned) return;
       const title = searchTitle(b);
       const links = marketLinks(title);
       const row = document.createElement('div');
       row.className = 'book' + (owned ? ' owned' : '');
       row.innerHTML = `
         <label class="book-main">
-          <input type="checkbox" ${owned?'checked':''} data-key="${key}">
+          <input type="checkbox" ${owned?'checked':''} data-key="${key}" ${isGuest?'disabled':''}>
           <span class="book-text"><span class="book-num">${i+1}.</span>${escapeHtml(b)}</span>
         </label>
         <div class="market-links">
@@ -623,9 +677,11 @@ function render(){
           <a class="mkt" href="${links.vinted}" target="_blank" rel="noopener noreferrer" title="Cerca &quot;${escapeHtml(title)}&quot; su Vinted" aria-label="Cerca su Vinted"><img src="${ICON_VINTED}" alt="Vinted"></a>
         </div>
       `;
-      row.querySelector('input').addEventListener('change', (e) => {
-        toggleBook(key, e.target.checked);
-      });
+      if(!isGuest){
+        row.querySelector('input').addEventListener('change', (e) => {
+          toggleBook(key, e.target.checked);
+        });
+      }
       listInner.appendChild(row);
     });
     listWrap.appendChild(listInner);
@@ -708,23 +764,122 @@ async function loadFromCloud(){
 }
 
 async function showApp(user){
+  isGuest = false;
   currentUser = user;
   document.getElementById('authScreen').hidden = true;
   document.getElementById('app').hidden = false;
+  document.getElementById('accountBox').hidden = false;
+  document.getElementById('guestBox').hidden = true;
+  document.getElementById('guestBanner').hidden = true;
+  document.getElementById('wishlistToggleWrap').hidden = true;
+  document.getElementById('logoutBtn').hidden = false;
   document.getElementById('accountEmail').textContent = user.email || '';
   loadLocalCache();
   render();
   setSyncLine('caricamento…');
   await loadFromCloud();
+  await refreshShareButtonLabel();
 }
 
 function showAuth(){
   currentUser = null;
   document.getElementById('app').hidden = true;
   document.getElementById('authScreen').hidden = false;
+  document.getElementById('authEmail').disabled = false;
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authCode').value = '';
+  document.getElementById('otpSection').hidden = true;
+  document.getElementById('authSubmit').hidden = false;
+  document.getElementById('authStatus').textContent = '';
+  document.getElementById('authStatus').className = 'auth-status';
 }
 
-document.getElementById('authSubmit').addEventListener('click', async () => {
+async function initGuest(token){
+  isGuest = true;
+  guestShareToken = token;
+  const { data, error } = await sb
+    .from('collections')
+    .select('owned_keys, display_name')
+    .eq('share_token', token)
+    .maybeSingle();
+
+  document.getElementById('authScreen').hidden = true;
+  document.getElementById('app').hidden = false;
+  document.getElementById('accountBox').hidden = true;
+  document.getElementById('guestBox').hidden = false;
+  document.getElementById('wishlistToggleWrap').hidden = false;
+  document.getElementById('logoutBtn').hidden = true;
+
+  if(error || !data){
+    document.getElementById('guestBanner').hidden = false;
+    document.getElementById('guestName').textContent = 'link non valido o non più attivo';
+    setSyncLine('');
+    render();
+    return;
+  }
+
+  const label = data.display_name || 'un amico';
+  document.getElementById('guestLabel').textContent = 'Wishlist di ' + label;
+  document.getElementById('guestName').textContent = label;
+  document.getElementById('guestBanner').hidden = false;
+  if(Array.isArray(data.owned_keys)) state.owned = new Set(data.owned_keys);
+  render();
+  setSyncLine('');
+}
+
+async function refreshShareButtonLabel(){
+  if(!currentUser) return;
+  const { data } = await sb
+    .from('collections')
+    .select('share_token')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+  const btn = document.getElementById('shareBtn');
+  btn.textContent = (data && data.share_token) ? 'Copia link wishlist' : 'Condividi come wishlist';
+}
+
+async function handleShare(){
+  if(!currentUser) return;
+  const btn = document.getElementById('shareBtn');
+  btn.disabled = true;
+  const { data: existing } = await sb
+    .from('collections')
+    .select('share_token, display_name')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  let token = existing && existing.share_token;
+  let displayName = existing && existing.display_name;
+
+  if(!displayName){
+    displayName = window.prompt('Che nome vuoi mostrare a chi guarda la tua wishlist? (es. il tuo nome)', '') || null;
+  }
+  if(!token){
+    token = crypto.randomUUID();
+  }
+
+  const { error } = await sb.from('collections').update({
+    share_token: token,
+    display_name: displayName
+  }).eq('user_id', currentUser.id);
+
+  btn.disabled = false;
+  if(error){
+    setSyncLine('errore nella creazione del link condiviso');
+    return;
+  }
+
+  const url = window.location.origin + window.location.pathname + '?share=' + token;
+  try{
+    await navigator.clipboard.writeText(url);
+    setSyncLine('link copiato negli appunti!');
+  }catch(e){
+    window.prompt('Copia questo link e condividilo:', url);
+  }
+  btn.textContent = 'Copia link wishlist';
+}
+
+async function sendCode(){
   const email = document.getElementById('authEmail').value.trim();
   const statusEl = document.getElementById('authStatus');
   const btn = document.getElementById('authSubmit');
@@ -738,24 +893,64 @@ document.getElementById('authSubmit').addEventListener('click', async () => {
   statusEl.textContent = 'Invio in corso…';
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.href }
+    options: { shouldCreateUser: true }
   });
   btn.disabled = false;
   if(error){
     statusEl.textContent = 'Errore: ' + error.message;
     statusEl.classList.add('err');
   } else {
-    statusEl.textContent = 'Link inviato! Controlla la tua casella email (anche spam) e clicca il link per accedere.';
+    statusEl.textContent = 'Codice inviato! Controlla la tua email (anche spam) e inserisci qui sotto le 6 cifre.';
     statusEl.classList.add('ok');
+    document.getElementById('otpSection').hidden = false;
+    document.getElementById('authEmail').disabled = true;
+    document.getElementById('authSubmit').hidden = true;
+    document.getElementById('authCode').focus();
   }
-});
+}
+
+document.getElementById('authSubmit').addEventListener('click', sendCode);
+document.getElementById('authResend').addEventListener('click', sendCode);
 
 document.getElementById('authEmail').addEventListener('keydown', (e) => {
   if(e.key === 'Enter') document.getElementById('authSubmit').click();
 });
 
+document.getElementById('authConfirm').addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const code = document.getElementById('authCode').value.trim();
+  const statusEl = document.getElementById('authStatus');
+  const btn = document.getElementById('authConfirm');
+  statusEl.className = 'auth-status';
+  if(!code || code.length < 6){
+    statusEl.textContent = 'Inserisci il codice a 6 cifre ricevuto via email.';
+    statusEl.classList.add('err');
+    return;
+  }
+  btn.disabled = true;
+  statusEl.textContent = 'Verifica in corso…';
+  const { error } = await sb.auth.verifyOtp({ email, token: code, type: 'email' });
+  btn.disabled = false;
+  if(error){
+    statusEl.textContent = 'Codice errato o scaduto. Riprova o richiedine uno nuovo.';
+    statusEl.classList.add('err');
+  }
+  // on success, onAuthStateChange fires and swaps the screen automatically
+});
+
+document.getElementById('authCode').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') document.getElementById('authConfirm').click();
+});
+
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   await sb.auth.signOut();
+});
+
+document.getElementById('shareBtn').addEventListener('click', handleShare);
+
+document.getElementById('wishlistToggle').addEventListener('change', (e) => {
+  wishlistMode = e.target.checked;
+  render();
 });
 
 document.getElementById('search').addEventListener('input', render);
@@ -772,19 +967,25 @@ document.getElementById('toggleAll').addEventListener('click', (e) => {
   render();
 });
 
-sb.auth.onAuthStateChange((event, session) => {
-  if(session && session.user){
-    showApp(session.user);
-  } else {
-    showAuth();
-  }
-});
+const shareToken = new URLSearchParams(window.location.search).get('share');
 
-sb.auth.getSession().then(({ data }) => {
-  if(data && data.session && data.session.user){
-    showApp(data.session.user);
-  }
-});
+if(shareToken){
+  initGuest(shareToken);
+} else {
+  sb.auth.onAuthStateChange((event, session) => {
+    if(session && session.user){
+      showApp(session.user);
+    } else {
+      showAuth();
+    }
+  });
+
+  sb.auth.getSession().then(({ data }) => {
+    if(data && data.session && data.session.user){
+      showApp(data.session.user);
+    }
+  });
+}
 </script>
 </body>
 </html>
