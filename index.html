@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Librogame EL</title>
-<meta name="description" content="Checklist della collezione completa dei librogame Edizioni EL: 34 serie, 194 volumi, con account personale e sincronizzazione.">
+<meta name="description" content="Checklist della collezione completa dei librogame Edizioni EL: 34 serie, 196 volumi, con account personale e sincronizzazione.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -499,9 +499,9 @@ main{
 .book.owned .book-text{ color:var(--muted); }
 .book-num{ font-family:"JetBrains Mono",monospace; color:var(--muted); font-size:11px; margin-right:4px; }
 
-.market-links{ display:flex; align-items:center; gap:5px; flex-shrink:0; margin-left:2px; }
+.market-links{ display:flex; align-items:center; gap:4px; flex-shrink:0; margin-left:2px; }
 .mkt{
-  width:25px; height:25px; min-width:25px;
+  width:23px; height:23px; min-width:23px;
   border-radius:7px; overflow:hidden; display:block;
   box-shadow:0 1px 1px rgba(0,0,0,.15);
   background:#fff;
@@ -594,7 +594,7 @@ footer{
   <main id="main"></main>
   <div class="empty" id="emptyMsg" hidden>Nessun risultato.</div>
 
-  <footer>194 volumi &middot; 34 serie &middot; salvataggio personale sincronizzato</footer>
+  <footer>196 volumi &middot; 34 serie &middot; salvataggio personale sincronizzato</footer>
 </div>
 
 <script src="series_data.js"></script>
@@ -607,6 +607,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ICON_EBAY = "icons/ebay.png";
 const ICON_SUBITO = "icons/subito.png";
 const ICON_VINTED = "icons/vinted.png";
+const ICON_FACEBOOK = "icons/facebook.png";
 
 const state = { owned: new Set(), open: new Set() };
 let currentUser = null;
@@ -622,7 +623,7 @@ function searchTitle(b){
   let t = b;
   const parenIdx = t.indexOf(' (');
   if(parenIdx > -1) t = t.slice(0, parenIdx);
-  t = t.replace(/^\d+[a-z]?\)\s*/i, '');
+  t = t.replace(/^[a-z0-9]{1,3}\)\s*/i, '');
   const dashIdx = t.indexOf(' — ');
   if(dashIdx > -1) t = t.slice(dashIdx + 3);
   return t.trim();
@@ -633,7 +634,8 @@ function marketLinks(title){
   return {
     ebay: 'https://www.ebay.it/sch/i.html?_nkw=' + q,
     subito: 'https://www.subito.it/annunci-italia/vendita/usato/?q=' + q,
-    vinted: 'https://www.vinted.it/catalog?search_text=' + q
+    vinted: 'https://www.vinted.it/catalog?search_text=' + q,
+    facebook: 'https://www.facebook.com/marketplace/search/?query=' + q
   };
 }
 
@@ -715,6 +717,7 @@ function render(){
           <a class="mkt" href="${links.ebay}" target="_blank" rel="noopener noreferrer" title="Cerca &quot;${escapeHtml(title)}&quot; su eBay" aria-label="Cerca su eBay"><img src="${ICON_EBAY}" alt="eBay"></a>
           <a class="mkt" href="${links.subito}" target="_blank" rel="noopener noreferrer" title="Cerca &quot;${escapeHtml(title)}&quot; su Subito.it" aria-label="Cerca su Subito"><img src="${ICON_SUBITO}" alt="Subito"></a>
           <a class="mkt" href="${links.vinted}" target="_blank" rel="noopener noreferrer" title="Cerca &quot;${escapeHtml(title)}&quot; su Vinted" aria-label="Cerca su Vinted"><img src="${ICON_VINTED}" alt="Vinted"></a>
+          <a class="mkt" href="${links.facebook}" target="_blank" rel="noopener noreferrer" title="Cerca &quot;${escapeHtml(title)}&quot; su Facebook Marketplace" aria-label="Cerca su Facebook Marketplace"><img src="${ICON_FACEBOOK}" alt="Facebook Marketplace"></a>
         </div>
       `;
       if(!isGuest){
